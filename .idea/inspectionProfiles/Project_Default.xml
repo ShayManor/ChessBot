@@ -1,0 +1,52 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="JSHint" enabled="true" level="ERROR" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="20">
+            <item index="0" class="java.lang.String" itemvalue="comm" />
+            <item index="1" class="java.lang.String" itemvalue="matplotlib-inline" />
+            <item index="2" class="java.lang.String" itemvalue="Flask-Cors" />
+            <item index="3" class="java.lang.String" itemvalue="google-auth-oauthlib" />
+            <item index="4" class="java.lang.String" itemvalue="googleapis-common-protos" />
+            <item index="5" class="java.lang.String" itemvalue="imageio-ffmpeg" />
+            <item index="6" class="java.lang.String" itemvalue="gunicorn" />
+            <item index="7" class="java.lang.String" itemvalue="grpc-google-iam-v1" />
+            <item index="8" class="java.lang.String" itemvalue="openai" />
+            <item index="9" class="java.lang.String" itemvalue="boto3" />
+            <item index="10" class="java.lang.String" itemvalue="quil" />
+            <item index="11" class="java.lang.String" itemvalue="google-auth-httplib2" />
+            <item index="12" class="java.lang.String" itemvalue="moviepy" />
+            <item index="13" class="java.lang.String" itemvalue="axios" />
+            <item index="14" class="java.lang.String" itemvalue="google-api-python-client" />
+            <item index="15" class="java.lang.String" itemvalue="google-cloud-translate" />
+            <item index="16" class="java.lang.String" itemvalue="google-cloud-core" />
+            <item index="17" class="java.lang.String" itemvalue="google-api-core" />
+            <item index="18" class="java.lang.String" itemvalue="google-auth" />
+            <item index="19" class="java.lang.String" itemvalue="google.cloud" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8Inspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="E225" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="N802" />
+          <option value="N803" />
+          <option value="N801" />
+          <option value="N806" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
