@@ -1,3 +1,4 @@
+import os
 import time
 
 import pandas
@@ -7,6 +8,10 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 
+num_layers = 6
+epocs = 25
+hidden_dims = 6
+
 # Mapping for pieces: white pieces use uppercase, black pieces use lowercase.
 piece_to_idx = {
     'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
@@ -14,12 +19,33 @@ piece_to_idx = {
 }
 
 
+def get_advantage(fen):
+    piece_values = {
+        'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0,
+        'p': -1, 'n': -3, 'b': -3, 'r': -5, 'q': -9, 'k': 0
+    }
+
+    board_part = fen.split()[0]
+
+    advantage = 0
+    ranks = board_part.split('/')
+    for rank in ranks:
+        for char in rank:
+            if char.isdigit():
+                continue
+            else:
+                advantage += piece_values.get(char, 0)
+
+    return advantage
+
+
 def fen_to_tensor(fen):
     """
-    Converts board into a 768 dimensional tensor (64 squares * 12 pieces)
+    Converts board into a 774 dimensional tensor (64 squares * 12 pieces + 5 info)
     """
     board, active, castling, en_passant, halfmove, fullmove = fen.split(" ")
-    tensor = torch.zeros(64 * 12)
+    # board, castling king white, queen white, king black, queen black, turn
+    tensor = torch.zeros(64 * 12 + 6)
     rows = board.split("/")
 
     # FEN starts at rank 8 and ends at 1
@@ -33,6 +59,11 @@ def fen_to_tensor(fen):
                 feat = square * 12 + piece_to_idx[char]
                 tensor[feat] = 1
                 file += 1
+    tensor[768] = 1 if active == 'w' else -1
+    options = "KQkq"
+    for i in range(769, 773):
+        tensor[i] = 1 if options[i - 769] in castling else -1
+    tensor[773] = get_advantage(fen)
     return tensor
 
 
@@ -41,8 +72,10 @@ class ChessDataset(Dataset):
     Pytorch Dataset that loads FEN and evaluations from csv
     """
 
-    def __init__(self, csv):
-        self.data = pandas.read_csv(csv)
+    def __init__(self, csv_file, start_idx=None, end_idx=None):
+        self.data = pd.read_csv(csv_file)
+        if start_idx is not None or end_idx is not None:
+            self.data = self.data.iloc[start_idx:end_idx].reset_index(drop=True)
 
     def __len__(self):
         return len(self.data)
@@ -55,25 +88,31 @@ class ChessDataset(Dataset):
         except ValueError as e:
             print(f"Error processing FEN at index {idx}: {e}")
             raise
-        eval_value = float(row['Evaluation'].replace('#',''))
+        eval_value = float(row['Evaluation'].replace('#', ''))
         return features, torch.tensor([eval_value], dtype=torch.float)
 
 
 class NNUE(nn.Module):
     """
-    Simple NNUE with 2 fully connected layers
+    Simple NNUE with 5 fully connected layers
     """
 
-    def __init__(self, input_dim=768, hidden_dim=256):
+    def __init__(self, input_dim=774, hidden_dim=1024, num_layers=6):
         super(NNUE, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, 1)  # output score
+        self.fc = nn.ModuleList()
+        self.relu = nn.ModuleList()
+        self.fc.append(nn.Linear(input_dim, hidden_dim))
+        self.relu.append(nn.ReLU())
+        for _ in range(num_layers - 1):
+            self.fc.append(nn.Linear(hidden_dim, hidden_dim))
+            self.relu.append(nn.ReLU())
+        self.fc.append(nn.Linear(hidden_dim, 1))
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
+        for idx in range(len(self.relu)):
+            x = self.fc[idx](x)
+            x = self.relu[idx](x)
+        x = self.fc[-1](x)
         return x
 
 
@@ -104,27 +143,71 @@ def test_net(model, fen, device):
         print(f"Evaluation for FEN '{fen}': {evaluation.item():.4f}")
 
 
-def main():
+def evaluate(model, dataloader, criterion, device):
+    """
+    Evaluates the model on the data provided by the dataloader using the given loss criterion.
+    Returns the average loss over the dataset.
+    """
+    model.eval()  # Set model to evaluation mode
+    total_loss = 0.0
+    total_samples = 0
+
+    with torch.no_grad():
+        for features, target in dataloader:
+            features, target = features.to(device), target.to(device)
+            output = model(features)
+            loss = criterion(output, target)
+            # Multiply by the number of samples in the batch for weighted sum
+            total_loss += loss.item() * features.size(0)
+            total_samples += features.size(0)
+
+    average_loss = total_loss / total_samples if total_samples else float('inf')
+    print(f"Average Evaluation Loss: {average_loss:.4f}")
+    return average_loss
+
+
+def save_model_weights(model, file_path="test2_model_weights.pth"):
+    """
+    Saves the model's state dictionary (its weights) to the specified file.
+    """
+    torch.save(model.state_dict(), file_path)
+    print(f"Model weights saved to {file_path}")
+
+
+def create_test_dataset(csv_file):
+    # Read the full CSV to get the total number of rows
+    data = pd.read_csv(csv_file)
+    total_rows = len(data)
+    test_start = int(0.9 * total_rows)  # Last 10% of rows
+    print(f"Total rows: {total_rows}. Using rows {test_start} to {total_rows} for testing.")
+
+    # Create and return a ChessDataset for the test set
+    return ChessDataset(csv_file, start_idx=test_start, end_idx=total_rows)
+
+
+def main(layers, epocs, hidden_dims):
     # Set up device: use GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    dataset = ChessDataset('data/chessData.csv')
+    dataset = ChessDataset('data/choppedData.csv')
     dataloader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # Initialize model, optimizer, and loss function
-    model = NNUE().to(device)
+    model = NNUE(774, hidden_dims, layers).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
-    num_epochs = 10
-    for epoch in range(num_epochs):
+    for epoch in range(epocs):
         loss = train(model, dataloader, optimizer, criterion, device)
-        print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {loss:.4f}")
-    start_time = time.time()
-    test_fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
-    test_net(model, test_fen, device)
-    print(f"Time taken: {time.time() - start_time}")
+        print(f"Epoch {epoch + 1}/{epocs}, Loss: {loss:.4f}")
+    test_dataset = create_test_dataset("data/choppedData.csv")
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    evaluate(model, test_loader, criterion, device)
+    i = 1
+    while os.path.exists(f'test{i}_model_weights.pth'):
+        i += 1
+    save_model_weights(model, f'test{i}_model_weights.pth')
 
 
 if __name__ == '__main__':
-    main()
+    main(num_layers, epocs, hidden_dims)
