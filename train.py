@@ -1,18 +1,14 @@
 import os
 import time
-
-import pandas
+import csv
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-import pandas as pd
 
-num_layers = 6
-epocs = 25
-hidden_dims = 6
+# --- Helper functions for processing FEN ---
 
-# Mapping for pieces: white pieces use uppercase, black pieces use lowercase.
 piece_to_idx = {
     'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
     'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11,
@@ -24,31 +20,25 @@ def get_advantage(fen):
         'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0,
         'p': -1, 'n': -3, 'b': -3, 'r': -5, 'q': -9, 'k': 0
     }
-
     board_part = fen.split()[0]
-
     advantage = 0
-    ranks = board_part.split('/')
-    for rank in ranks:
+    for rank in board_part.split('/'):
         for char in rank:
             if char.isdigit():
                 continue
-            else:
-                advantage += piece_values.get(char, 0)
-
+            advantage += piece_values.get(char, 0)
     return advantage
 
 
 def fen_to_tensor(fen):
     """
-    Converts board into a 774 dimensional tensor (64 squares * 12 pieces + 5 info)
+    Converts FEN into a 774-dimensional tensor:
+      - First 768: board pieces (12 channels × 64 squares)
+      - Last 6: extra features (turn, castling rights, material advantage)
     """
     board, active, castling, en_passant, halfmove, fullmove = fen.split(" ")
-    # board, castling king white, queen white, king black, queen black, turn
     tensor = torch.zeros(64 * 12 + 6)
     rows = board.split("/")
-
-    # FEN starts at rank 8 and ends at 1
     for idx, row in enumerate(rows):
         file = 0
         for char in row:
@@ -59,6 +49,7 @@ def fen_to_tensor(fen):
                 feat = square * 12 + piece_to_idx[char]
                 tensor[feat] = 1
                 file += 1
+    # Extra features:
     tensor[768] = 1 if active == 'w' else -1
     options = "KQkq"
     for i in range(769, 773):
@@ -67,27 +58,38 @@ def fen_to_tensor(fen):
     return tensor
 
 
-class ChessDataset(Dataset):
+def process_fen(fen):
     """
-    Pytorch Dataset that loads FEN and evaluations from csv
+    Splits the full tensor into:
+      - board_tensor: shape [12, 8, 8]
+      - extra_tensor: shape [6]
     """
+    full_tensor = fen_to_tensor(fen)
+    board_tensor = full_tensor[:768].view(12, 8, 8)
+    extra_tensor = full_tensor[768:]
+    return board_tensor, extra_tensor
 
-    def __init__(self, csv_file, start_idx=None, end_idx=None, normalize=True):
+
+# --- Dataset Class with Improved Normalization ---
+
+class ChessDataset(Dataset):
+    def __init__(self, csv_file, start_idx=None, end_idx=None, normalize=True, norm_params=None):
         self.data = pd.read_csv(csv_file)
         if start_idx is not None or end_idx is not None:
             self.data = self.data.iloc[start_idx:end_idx].reset_index(drop=True)
         self.normalize = normalize
-        if normalize:
-            # Convert Evaluation to float (removing any '#' if present)
-            self.data['EvalFloat'] = self.data['Evaluation'].apply(
-                lambda x: float(str(x).replace('#', ''))
-            )
-            self.mean_eval = self.data['EvalFloat'].mean()
-            self.std_eval = self.data['EvalFloat'].std()
-            print(f"Target normalization: mean={self.mean_eval:.4f}, std={self.std_eval:.4f}")
+        # Convert Evaluation to float (remove '#' if present)
+        self.data['EvalFloat'] = self.data['Evaluation'].apply(lambda x: float(str(x).replace('#', '')))
+        if self.normalize:
+            if norm_params is None:
+                # Compute normalization parameters from this dataset (ideally training set)
+                self.mean_eval = self.data['EvalFloat'].mean()
+                self.std_eval = self.data['EvalFloat'].std()
+            else:
+                self.mean_eval, self.std_eval = norm_params
+            print(f"Normalization parameters: mean={self.mean_eval:.4f}, std={self.std_eval:.4f}")
         else:
-            self.mean_eval, self.std_eval = 0, 1  # dummy values
-
+            self.mean_eval, self.std_eval = 0, 1
 
     def __len__(self):
         return len(self.data)
@@ -95,52 +97,86 @@ class ChessDataset(Dataset):
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
         fen = row['FEN']
-        try:
-            features = fen_to_tensor(fen)
-        except ValueError as e:
-            print(f"Error processing FEN at index {idx}: {e}")
-            raise
-        eval_value = float(row['Evaluation'].replace('#', ''))
+        board, extra = process_fen(fen)
+        eval_value = float(str(row['Evaluation']).replace('#', ''))
         if self.normalize:
-            # Normalize target: (target - mean) / std
             norm_eval = (eval_value - self.mean_eval) / self.std_eval
             target = torch.tensor([norm_eval], dtype=torch.float)
         else:
             target = torch.tensor([eval_value], dtype=torch.float)
-        return features, target
+        # Return tuple: ((board tensor, extra features), target)
+        return (board, extra), target
 
 
-class NNUE(nn.Module):
-    """
-    Simple NNUE with 5 fully connected layers
-    """
+# --- New Model Architecture with Programmable Layers, Dropout, and Batch Normalization ---
 
-    def __init__(self, input_dim=774, hidden_dim=1024, num_layers=6):
-        super(NNUE, self).__init__()
-        self.fc = nn.ModuleList()
-        self.relu = nn.ModuleList()
-        self.fc.append(nn.Linear(input_dim, hidden_dim))
-        self.relu.append(nn.ReLU())
-        for _ in range(num_layers - 1):
-            self.fc.append(nn.Linear(hidden_dim, hidden_dim))
-            self.relu.append(nn.ReLU())
-        self.fc.append(nn.Linear(hidden_dim, 1))
+class ChessCNN(nn.Module):
+    def __init__(self, conv_channels=64, dropout_rate=0.25, fc_hidden_dim=512,
+                 num_conv_layers=3, num_fc_layers=2):
+        """
+        conv_channels: Number of filters for all convolutional layers.
+        dropout_rate: Dropout probability.
+        fc_hidden_dim: Hidden dimension for fully connected layers.
+        num_conv_layers: Programmatically select the number of convolutional layers.
+        num_fc_layers: Programmatically select the number of fully connected layers.
+                       (Minimum 1; if 1 then direct mapping from input to output.)
+        """
+        super(ChessCNN, self).__init__()
+        conv_layers = []
+        # First convolution: input channels 12 -> conv_channels
+        conv_layers.append(nn.Conv2d(12, conv_channels, kernel_size=3, padding=1))
+        conv_layers.append(nn.BatchNorm2d(conv_channels))
+        conv_layers.append(nn.ReLU())
+        conv_layers.append(nn.Dropout2d(dropout_rate))
+        # Additional convolutional layers:
+        for _ in range(1, num_conv_layers):
+            conv_layers.append(nn.Conv2d(conv_channels, conv_channels, kernel_size=3, padding=1))
+            conv_layers.append(nn.BatchNorm2d(conv_channels))
+            conv_layers.append(nn.ReLU())
+            conv_layers.append(nn.Dropout2d(dropout_rate))
+        self.conv = nn.Sequential(*conv_layers)
+        # Calculate conv output dimension (conv_channels x 8 x 8)
+        conv_output_dim = conv_channels * 8 * 8
+        # Input dimension for fully connected layers (add 6 extra features)
+        fc_input_dim = conv_output_dim + 6
+        fc_layers = []
+        if num_fc_layers >= 2:
+            fc_layers.append(nn.Linear(fc_input_dim, fc_hidden_dim))
+            fc_layers.append(nn.BatchNorm1d(fc_hidden_dim))
+            fc_layers.append(nn.ReLU())
+            fc_layers.append(nn.Dropout(dropout_rate))
+            # Additional fc layers if specified
+            for _ in range(num_fc_layers - 2):
+                fc_layers.append(nn.Linear(fc_hidden_dim, fc_hidden_dim))
+                fc_layers.append(nn.BatchNorm1d(fc_hidden_dim))
+                fc_layers.append(nn.ReLU())
+                fc_layers.append(nn.Dropout(dropout_rate))
+            fc_layers.append(nn.Linear(fc_hidden_dim, 1))
+        else:
+            # Only one FC layer: direct mapping.
+            fc_layers.append(nn.Linear(fc_input_dim, 1))
+        self.fc = nn.Sequential(*fc_layers)
 
-    def forward(self, x):
-        for idx in range(len(self.relu)):
-            x = self.fc[idx](x)
-            x = self.relu[idx](x)
-        x = self.fc[-1](x)
-        return x
+    def forward(self, board, extra):
+        # board shape: [batch_size, 12, 8, 8]
+        x = self.conv(board)
+        x = x.view(x.size(0), -1)
+        x = torch.cat((x, extra), dim=1)
+        out = self.fc(x)
+        return out
 
+
+# --- Training, Evaluation, and Saving Functions ---
 
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
-    for features, target in dataloader:
-        features, target = features.to(device), target.to(device)
+    for (board, extra), target in dataloader:
+        board = board.to(device)
+        extra = extra.to(device)
+        target = target.to(device)
         optimizer.zero_grad()
-        output = model(features)
+        output = model(board, extra)
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
@@ -148,89 +184,71 @@ def train(model, dataloader, optimizer, criterion, device):
     return total_loss / len(dataloader)
 
 
-def test_net(model, fen, device):
-    """
-    Tests the network on a given FEN string.
-    Prints out the network's evaluation.
-    """
-    model.eval()  # Set the model to evaluation mode
-    with torch.no_grad():
-        # Convert FEN to tensor and move to device; unsqueeze to add batch dimension.
-        features = fen_to_tensor(fen).to(device).unsqueeze(0)
-        evaluation = model(features)
-        print(f"Evaluation for FEN '{fen}': {evaluation.item():.4f}")
-
-
 def evaluate(model, dataloader, criterion, device):
-    """
-    Evaluates the model on the data provided by the dataloader using the given loss criterion.
-    Returns the average loss over the dataset.
-    """
-    model.eval()  # Set model to evaluation mode
+    model.eval()
     total_loss = 0.0
     total_samples = 0
-
     with torch.no_grad():
-        for features, target in dataloader:
-            features, target = features.to(device), target.to(device)
-            output = model(features)
+        for (board, extra), target in dataloader:
+            board = board.to(device)
+            extra = extra.to(device)
+            target = target.to(device)
+            output = model(board, extra)
             loss = criterion(output, target)
-            # Multiply by the number of samples in the batch for weighted sum
-            total_loss += loss.item() * features.size(0)
-            total_samples += features.size(0)
-
-    average_loss = total_loss / total_samples if total_samples else float('inf')
-    print(f"Average Evaluation Loss: {average_loss:.4f}")
-    return average_loss
+            total_loss += loss.item() * board.size(0)
+            total_samples += board.size(0)
+    avg_loss = total_loss / total_samples if total_samples else float('inf')
+    print(f"Average Evaluation Loss: {avg_loss:.4f}")
+    return avg_loss
 
 
-def save_model_weights(model, file_path="test2_model_weights.pth"):
-    """
-    Saves the model's state dictionary (its weights) to the specified file.
-    """
+def save_model_weights(model, file_path):
     torch.save(model.state_dict(), file_path)
     print(f"Model weights saved to {file_path}")
 
 
-def create_test_dataset(csv_file):
-    # Read the full CSV to get the total number of rows
-    data = pd.read_csv(csv_file)
-    total_rows = len(data)
-    test_start = int(0.9 * total_rows)  # Last 10% of rows
-    print(f"Total rows: {total_rows}. Using rows {test_start} to {total_rows} for testing.")
+# --- Main Training Script with Programmable Hyperparameters ---
 
-    # Create and return a ChessDataset for the test set
-    return ChessDataset(csv_file, start_idx=test_start, end_idx=total_rows)
-
-
-def main(layers, epocs, hidden_dims):
-    # Set up device: use GPU if available
+def main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=512,
+         dropout_rate=0.25, num_epochs=25, learning_rate=1e-3):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    dataset = ChessDataset('data/choppedData.csv')
-    dataloader = DataLoader(dataset, batch_size=128, shuffle=True)
+    # Load training dataset and compute normalization parameters
+    train_dataset = ChessDataset('data/choppedData.csv', normalize=True)
+    norm_params = (train_dataset.mean_eval, train_dataset.std_eval)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 
-    # Initialize model, optimizer, and loss function
-    model = NNUE(774, hidden_dims, layers).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    criterion = nn.MSELoss()
-
-    for epoch in range(epocs):
-        loss = train(model, dataloader, optimizer, criterion, device)
-        print(f"Epoch {epoch + 1}/{epocs}, Loss: {loss:.4f}")
-    test_dataset = create_test_dataset("data/choppedData.csv")
+    # Use last 10% of data as test set with training normalization parameters
+    total_rows = len(pd.read_csv('data/choppedData.csv'))
+    test_start = int(0.9 * total_rows)
+    test_dataset = ChessDataset('data/choppedData.csv', start_idx=test_start, end_idx=total_rows,
+                                normalize=True, norm_params=norm_params)
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+
+    # Initialize model with programmable layers
+    model = ChessCNN(conv_channels=conv_channels, dropout_rate=dropout_rate,
+                     fc_hidden_dim=fc_hidden_dim, num_conv_layers=num_conv_layers,
+                     num_fc_layers=num_fc_layers).to(device)
+
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+    criterion = nn.MSELoss()
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+
+    for epoch in range(num_epochs):
+        train_loss = train(model, train_loader, optimizer, criterion, device)
+        print(f"Epoch {epoch + 1}/{num_epochs}, Training Loss: {train_loss:.4f}")
+        scheduler.step()
+
     evaluate(model, test_loader, criterion, device)
+
+    # Save the model weights with a unique filename.
     i = 1
     while os.path.exists(f'test{i}_model_weights.pth'):
         i += 1
     save_model_weights(model, f'test{i}_model_weights.pth')
-    # Example: normalize target evaluations
-    # eval_values = df['Evaluation'].apply(lambda x: float(str(x).replace('#', '')))
-    # mean_eval = eval_values.mean()
-    # std_eval = eval_values.std()
-    # df['Normalized Evaluation'] = eval_values.sub(mean_eval).div(std_eval)
 
 
 if __name__ == '__main__':
-    main(num_layers, epocs, hidden_dims)
+    # You can experiment with these parameters as needed.
+    main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=512,
+         dropout_rate=0.25, num_epochs=25, learning_rate=1e-3)
