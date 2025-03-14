@@ -50,6 +50,7 @@ def create_new():
                             i += 1
                         weights_file = f"test{i - 1}_model_weights.pth"
                         model = load_model_weights(model, weights_file, device)
+                        model.to(device)
                         data = pd.read_csv('data/choppedTest.csv')
                         start_time = time.time()
                         tot = 0
