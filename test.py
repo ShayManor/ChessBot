@@ -44,7 +44,7 @@ def create_new():
                         std_eval = test_dataset.std_eval
                         main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
                         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-                        model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
+                        model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims).to(device)
                         i = 1
                         while os.path.exists(f"test{i}_model_weights.pth"):
                             i += 1
