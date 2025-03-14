@@ -1,7 +1,9 @@
 import csv
 
 import kagglehub
-
+# https://chessbot-manors.s3.us-east-2.amazonaws.com/chessData.csv
+# https://chessbot-manors.s3.us-east-2.amazonaws.com/choppedData.csv
+# https://chessbot-manors.s3.us-east-2.amazonaws.com/choppedTest.csv
 # path = kagglehub.dataset_download("ronakbadhe/chess-evaluations")
 # print("Path to dataset files:", path)
 def test():
