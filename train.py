@@ -7,8 +7,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
-# --- Helper functions for processing FEN ---
+from preproces_data import PrecomputedChessDataset
 
+# --- Helper functions for processing FEN ---
 piece_to_idx = {
     'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
     'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11,
@@ -111,8 +112,8 @@ class ChessDataset(Dataset):
 # --- New Model Architecture with Programmable Layers, Dropout, and Batch Normalization ---
 
 class ChessCNN(nn.Module):
-    def __init__(self, conv_channels=64, dropout_rate=0.25, fc_hidden_dim=512,
-                 num_conv_layers=3, num_fc_layers=2):
+    def __init__(self, conv_channels=64, dropout_rate=0.5, fc_hidden_dim=512,
+                 num_conv_layers: int = 3, num_fc_layers: int = 2):
         """
         conv_channels: Number of filters for all convolutional layers.
         dropout_rate: Dropout probability.
@@ -129,7 +130,7 @@ class ChessCNN(nn.Module):
         conv_layers.append(nn.ReLU())
         conv_layers.append(nn.Dropout2d(dropout_rate))
         # Additional convolutional layers:
-        for _ in range(1, num_conv_layers):
+        for _ in range(1, int(num_conv_layers)):
             conv_layers.append(nn.Conv2d(conv_channels, conv_channels, kernel_size=3, padding=1))
             conv_layers.append(nn.BatchNorm2d(conv_channels))
             conv_layers.append(nn.ReLU())
@@ -140,7 +141,7 @@ class ChessCNN(nn.Module):
         # Input dimension for fully connected layers (add 6 extra features)
         fc_input_dim = conv_output_dim + 6
         fc_layers = []
-        if num_fc_layers >= 2:
+        if int(num_fc_layers) >= 2:
             fc_layers.append(nn.Linear(fc_input_dim, fc_hidden_dim))
             fc_layers.append(nn.BatchNorm1d(fc_hidden_dim))
             fc_layers.append(nn.ReLU())
@@ -171,15 +172,20 @@ class ChessCNN(nn.Module):
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
+    scaler = torch.amp.GradScaler('cuda')  # Initialize the GradScaler at the beginning of training
     for (board, extra), target in dataloader:
         board = board.to(device)
         extra = extra.to(device)
         target = target.to(device)
         optimizer.zero_grad()
-        output = model(board, extra)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
+        with torch.amp.autocast('cuda'):
+            output = model(board, extra)
+            output = output.squeeze(1)
+            loss = criterion(output, target)
+        scaler.scale(loss).backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        scaler.step(optimizer)
+        scaler.update()
         total_loss += loss.item()
     return total_loss / len(dataloader)
 
@@ -211,12 +217,13 @@ def save_model_weights(model, file_path):
 
 def main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=512,
          dropout_rate=0.25, num_epochs=25, learning_rate=1e-3):
+    torch.backends.cudnn.benchmark = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load training dataset and compute normalization parameters
-    train_dataset = ChessDataset('data/choppedData.csv', normalize=True)
+    train_dataset = PrecomputedChessDataset('data/precomputedData.pt', normalize=True)
     norm_params = (train_dataset.mean_eval, train_dataset.std_eval)
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True)
 
     # Use last 10% of data as test set with training normalization parameters
     total_rows = len(pd.read_csv('data/choppedData.csv'))
@@ -228,18 +235,20 @@ def main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=512
     # Initialize model with programmable layers
     model = ChessCNN(conv_channels=conv_channels, dropout_rate=dropout_rate,
                      fc_hidden_dim=fc_hidden_dim, num_conv_layers=num_conv_layers,
-                     num_fc_layers=num_fc_layers).to(device)
-
+                     num_fc_layers=num_fc_layers)
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
+    model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     criterion = nn.MSELoss()
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, optimizer, criterion, device)
         print(f"Epoch {epoch + 1}/{num_epochs}, Training Loss: {train_loss:.4f}")
         scheduler.step()
 
-    evaluate(model, test_loader, criterion, device)
+    # evaluate(model, test_loader, criterion, device)
 
     # Save the model weights with a unique filename.
     i = 1
