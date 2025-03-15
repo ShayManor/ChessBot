@@ -5,7 +5,7 @@ import time
 import pandas as pd
 import torch
 
-from train import fen_to_tensor, main, ChessDataset, ChessCNN
+from train import fen_to_tensor, main, ChessDataset, ChessCNN, process_fen
 
 
 def load_model_weights(model, weights_file, device):
@@ -19,20 +19,25 @@ def load_model_weights(model, weights_file, device):
 def score_chess_state(fen, model, device, mean_eval, std_eval):
     """
     Given a FEN string, returns the evaluation score in original scale.
+    Splits the FEN into board and extra features and passes both to the model.
     """
-    board_tensor = fen_to_tensor(fen).to(device).unsqueeze(0)
+    # Split FEN into board and extra features
+    board, extra = process_fen(fen)
+    # Add batch dimension and move both to the GPU
+    board = board.to(device).unsqueeze(0)
+    extra = extra.to(device).unsqueeze(0)
     with torch.no_grad():
-        norm_score = model(board_tensor)
+        norm_score = model(board, extra)
     score = norm_score.item() * std_eval + mean_eval
     return score
 
 
 def create_new():
-    hidden_dims_options = [512, 1024, 2048, 4096]
+    hidden_dims_options = [1024, 2048, 4096]
     epocs_options = [60]
-    conv_layers_options = [4, 6, 8]
+    conv_layers_options = [6, 8]
     fc_layers_options = [6, 8, 10, 14]
-    with open('data.csv', 'w') as file:
+    with open('data.csv', 'a') as file:
         writer = csv.writer(file)
         for layers in fc_layers_options:
             for epocs in epocs_options:
@@ -45,32 +50,6 @@ def create_new():
                         main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
                         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                         model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims).to(device)
-                        i = 1
-                        while os.path.exists(f"test{i}_model_weights.pth"):
-                            i += 1
-                        weights_file = f"test{i - 1}_model_weights.pth"
-                        model = load_model_weights(model, weights_file, device)
-                        model.to(device)
-                        data = pd.read_csv('data/choppedTest.csv')
-                        start_time = time.time()
-                        tot = 0
-                        total_vals = 0
-                        counter = 0
-                        for index, row in data.iterrows():
-                            counter += 1
-                            fen = row['FEN']
-                            exp_eval = float(row['Evaluation'].replace('#', '')) / 100
-                            evaluation = float(score_chess_state(fen, model, device, mean_eval, std_eval))
-                            # print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
-                            tot += abs((evaluation - exp_eval) / exp_eval)
-                            total_vals += abs(evaluation)
-                        print(f"Error rate: {tot / counter}. Average evals = {total_vals / counter}")
-                        print(
-                            f"Total time to test: {time.time() - start_time}. Average time: {(time.time() - start_time) / counter}")
-                        row = [tot / counter, total_vals / counter, time.time() - start_time,
-                               (time.time() - start_time) / counter, weights_file, layers, l, epocs, hidden_dims]
-                        writer.writerow(row)
-                        file.flush()
 
 
 def retest():
@@ -89,10 +68,11 @@ def retest():
         reader = csv.reader(f)
         for line in reader:
             test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
-            layers, l, epocs, hidden_dims = line[5], line[6], line[7], line[8]
+            print(line)
+            layers, l, epocs, hidden_dims = int(line[5]), int(line[6]), int(line[7]), int(line[8])
             mean_eval = test_dataset.mean_eval
             std_eval = test_dataset.std_eval
-            main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
+            # main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
             i = 1
@@ -108,10 +88,10 @@ def retest():
             for index, row in data.iterrows():
                 counter += 1
                 fen = row['FEN']
-                exp_eval = float(row['Evaluation'].replace('#', '')) / 100
+                exp_eval = float(row['Evaluation'].replace('#', ''))
                 evaluation = float(score_chess_state(fen, model, device, mean_eval, std_eval))
-                # print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
-                tot += abs((evaluation - exp_eval) / exp_eval)
+                print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
+                tot += abs(evaluation - exp_eval)
                 total_vals += abs(evaluation)
             print(f"Error rate: {tot / counter}. Average evals = {total_vals / counter}")
             print(
