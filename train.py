@@ -172,13 +172,13 @@ class ChessCNN(nn.Module):
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
-    scaler = torch.amp.GradScaler('cuda')  # Initialize the GradScaler at the beginning of training
+    scaler = torch.cuda.amp.GradScaler()  # Initialize the GradScaler at the beginning of training
     for (board, extra), target in dataloader:
         board = board.to(device)
         extra = extra.to(device)
         target = target.to(device)
         optimizer.zero_grad()
-        with torch.amp.autocast('cuda'):
+        with torch.cuda.amp.autocast():
             output = model(board, extra)
             output = output.squeeze(1)
             loss = criterion(output, target)
