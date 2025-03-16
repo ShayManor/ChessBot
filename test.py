@@ -33,10 +33,10 @@ def score_chess_state(fen, model, device, mean_eval, std_eval):
 
 
 def create_new():
-    hidden_dims_options = [1024, 2048, 4096]
-    epocs_options = [60]
-    conv_layers_options = [6, 8]
-    fc_layers_options = [6, 8, 10, 14]
+    hidden_dims_options = [2048]
+    epocs_options = [40]
+    conv_layers_options = [4]
+    fc_layers_options = [6]
     with open('data.csv', 'a') as file:
         writer = csv.writer(file)
         for layers in fc_layers_options:
@@ -103,6 +103,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    # create_new()
+    create_new()
     # time.sleep(60*2)
-    retest()
+    # retest()

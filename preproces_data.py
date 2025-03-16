@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -63,7 +64,7 @@ def process_fen(fen):
     return board_tensor, extra_tensor
 
 
-def precompute_data(csv_file, output_file):
+def precompute_data(csv_file, output_file, num_bins=100):
     df = pd.read_csv(csv_file)
     boards = []
     extras = []
@@ -78,7 +79,17 @@ def precompute_data(csv_file, output_file):
     boards = torch.cat(boards, dim=0)  # Shape: [N, 12, 8, 8]
     extras = torch.cat(extras, dim=0)  # Shape: [N, 6]
     evals = torch.cat(evals, dim=0)  # Shape: [N, 1]
-    torch.save({'boards': boards, 'extras': extras, 'evals': evals}, output_file)
+    evals_tensor = torch.tensor(evals, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
+    # Compute weights using a histogram on the raw evals.
+    evals_np = np.array(evals)
+    hist, bin_edges = np.histogram(evals_np, bins=num_bins, density=True)
+    bin_indices = np.digitize(evals_np, bins=bin_edges, right=True)
+    bin_freq = np.array([hist[i-1] if i > 0 and i-1 < len(hist) else 1.0 for i in bin_indices])
+    weights = 1.0 / (bin_freq + 1e-6)
+    # Normalize weights so that the average weight is 1
+    weights = weights / np.mean(weights)
+    weights_tensor = torch.tensor(weights, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
+    torch.save({'boards': boards, 'extras': extras, 'evals': evals_tensor, 'weights': weights_tensor}, output_file)
     print(f"Precomputed tensors saved to {output_file}")
 
 
