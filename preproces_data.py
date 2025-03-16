@@ -68,30 +68,40 @@ def precompute_data(csv_file, output_file, num_bins=100):
     df = pd.read_csv(csv_file)
     boards = []
     extras = []
-    evals = []
+    evals_list = []  # collect eval values as floats
     for _, row in df.iterrows():
         fen = row['FEN']
         board, extra = process_fen(fen)
         boards.append(board.unsqueeze(0))
         extras.append(extra.unsqueeze(0))
         eval_val = float(str(row['Evaluation']).replace('#', ''))
-        evals.append(torch.tensor([eval_val], dtype=torch.float))
+        evals_list.append(eval_val)
+    # Concatenate boards and extras
     boards = torch.cat(boards, dim=0)  # Shape: [N, 12, 8, 8]
     extras = torch.cat(extras, dim=0)  # Shape: [N, 6]
-    evals = torch.cat(evals, dim=0)  # Shape: [N, 1]
-    evals_tensor = torch.tensor(evals, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
-    # Compute weights using a histogram on the raw evals.
-    evals_np = np.array(evals)
+    # Create evals tensor directly from the list of floats
+    evals_tensor = torch.tensor(evals_list, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
+
+    # Compute weights using a histogram on the raw eval values.
+    # Squeeze evals_tensor to make a 1D numpy array.
+    evals_np = evals_tensor.squeeze(1).cpu().numpy()  # Shape: [N]
     hist, bin_edges = np.histogram(evals_np, bins=num_bins, density=True)
     bin_indices = np.digitize(evals_np, bins=bin_edges, right=True)
-    bin_freq = np.array([hist[i-1] if i > 0 and i-1 < len(hist) else 1.0 for i in bin_indices])
+    # Avoid division by zero
+    bin_freq = np.array([hist[i - 1] if i > 0 and i - 1 < len(hist) else 1.0 for i in bin_indices])
+    # Higher weight for rarer values
     weights = 1.0 / (bin_freq + 1e-6)
-    # Normalize weights so that the average weight is 1
+    # Normalize weights so that the average is 1
     weights = weights / np.mean(weights)
     weights_tensor = torch.tensor(weights, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
-    torch.save({'boards': boards, 'extras': extras, 'evals': evals_tensor, 'weights': weights_tensor}, output_file)
-    print(f"Precomputed tensors saved to {output_file}")
 
+    torch.save({
+        'boards': boards,
+        'extras': extras,
+        'evals': evals_tensor,
+        'weights': weights_tensor
+    }, output_file)
+    print(f"Precomputed tensors saved to {output_file}")
 
 class PrecomputedChessDataset(Dataset):
     def __init__(self, tensor_file, normalize=True, norm_params=None):
