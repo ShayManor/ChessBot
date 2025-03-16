@@ -1,6 +1,8 @@
 import os
 import time
 import csv
+
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -74,16 +76,29 @@ def process_fen(fen):
 # --- Dataset Class with Improved Normalization ---
 
 class ChessDataset(Dataset):
-    def __init__(self, csv_file, start_idx=None, end_idx=None, normalize=True, norm_params=None):
+    def __init__(self, csv_file, start_idx=None, end_idx=None, normalize=True, norm_params=None, num_bins=100):
         self.data = pd.read_csv(csv_file)
         if start_idx is not None or end_idx is not None:
             self.data = self.data.iloc[start_idx:end_idx].reset_index(drop=True)
         self.normalize = normalize
         # Convert Evaluation to float (remove '#' if present)
         self.data['EvalFloat'] = self.data['Evaluation'].apply(lambda x: float(str(x).replace('#', '')))
+
+        # Compute histogram and assign weights inversely proportional to density.
+        evals = self.data['EvalFloat'].values
+        hist, bin_edges = np.histogram(evals, bins=num_bins, density=True)
+        # For each sample, find the bin index and compute weight.
+        bin_indices = np.digitize(evals, bins=bin_edges, right=True)
+        # Avoid division by zero
+        bin_freq = np.array([hist[i-1] if i > 0 and i-1 < len(hist) else 1.0 for i in bin_indices])
+        # Higher weight for lower density regions (you might add smoothing)
+        weights = 1.0 / (bin_freq + 1e-6)
+        # Normalize weights to have mean 1
+        weights = weights / np.mean(weights)
+        self.data['weight'] = weights
+
         if self.normalize:
             if norm_params is None:
-                # Compute normalization parameters from this dataset (ideally training set)
                 self.mean_eval = self.data['EvalFloat'].mean()
                 self.std_eval = self.data['EvalFloat'].std()
             else:
@@ -105,8 +120,9 @@ class ChessDataset(Dataset):
             target = torch.tensor([norm_eval], dtype=torch.float)
         else:
             target = torch.tensor([eval_value], dtype=torch.float)
-        # Return tuple: ((board tensor, extra features), target)
-        return (board, extra), target
+        # Also return the sample weight
+        weight = torch.tensor([row['weight']], dtype=torch.float)
+        return (board, extra), target, weight
 
 
 # --- New Model Architecture with Programmable Layers, Dropout, and Batch Normalization ---
@@ -172,22 +188,25 @@ class ChessCNN(nn.Module):
 def train(model, dataloader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
-    scaler = torch.cuda.amp.GradScaler()  # Initialize the GradScaler at the beginning of training
-    for (board, extra), target in dataloader:
+    scaler = torch.cuda.amp.GradScaler()
+    for (board, extra), target, weight in dataloader:
         board = board.to(device)
         extra = extra.to(device)
         target = target.to(device)
+        weight = weight.to(device)
         optimizer.zero_grad()
         with torch.cuda.amp.autocast():
             output = model(board, extra)
             output = output.squeeze(1)
-            loss = criterion(output, target)
+            # Weighted MSE loss:
+            loss = (weight * (output - target) ** 2).mean()
         scaler.scale(loss).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         scaler.step(optimizer)
         scaler.update()
         total_loss += loss.item()
     return total_loss / len(dataloader)
+
 
 
 def evaluate(model, dataloader, criterion, device):
@@ -215,7 +234,7 @@ def save_model_weights(model, file_path):
 
 # --- Main Training Script with Programmable Hyperparameters ---
 
-def main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=512,
+def main(num_conv_layers=3, num_fc_layers=2, conv_channels=64, fc_hidden_dim=1024,
          dropout_rate=0.25, num_epochs=25, learning_rate=1e-3):
     torch.backends.cudnn.benchmark = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

@@ -57,8 +57,8 @@ def retest():
     # Create the test dataset with normalization enabled.
     test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
     # Get the normalization parameters from the dataset.
-    mean_eval = test_dataset.mean_eval
-    std_eval = test_dataset.std_eval
+    # mean_eval = test_dataset.mean_eval
+    # std_eval = test_dataset.std_eval
 
     # For ground-truth, you can also load the DataFrame separately if needed.
     df_test = pd.read_csv('data/choppedTest.csv')
@@ -75,10 +75,7 @@ def retest():
             # main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
-            i = 1
-            while os.path.exists(f"test{i}_model_weights.pth"):
-                i += 1
-            weights_file = f"test{i - 1}_model_weights.pth"
+            weights_file = line[4]
             model = load_model_weights(model, weights_file, device)
             data = pd.read_csv('data/choppedTest.csv')
             start_time = time.time()
@@ -98,7 +95,7 @@ def retest():
                 f"Total time to test: {time.time() - start_time}. Average time: {(time.time() - start_time) / counter}")
             row = [tot / counter, total_vals / counter, time.time() - start_time,
                    (time.time() - start_time) / counter, weights_file, layers, l, epocs, hidden_dims]
-        total_data.append(row)
+            total_data.append(row)
 
     with open('data.csv', 'a', newline='') as f:
         writer = csv.writer(f)
@@ -106,6 +103,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    create_new()
+    # create_new()
     # time.sleep(60*2)
-    # retest()
+    retest()
