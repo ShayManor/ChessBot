@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import h5py
+
 
 def parse_eval(eval_str, mate_constant=1000):
     eval_str = eval_str.strip()
@@ -124,46 +124,49 @@ def process_fen(fen):
 
 
 def precompute_data(csv_file, output_file, num_bins=100, chunksize=10000):
-    # First, count the total number of rows
+    all_boards = []
+    all_extras = []
+    all_evals = []
     total_rows = 0
+
+    # Process the CSV in chunks and accumulate data in lists.
     for chunk in pd.read_csv(csv_file, chunksize=chunksize):
-        total_rows += len(chunk)
+        for _, row in chunk.iterrows():
+            total_rows += 1
+            fen = row['FEN']
+            board, extra = process_fen(fen)
+            all_boards.append(board.unsqueeze(0))
+            all_extras.append(extra.unsqueeze(0))
+            eval_val = parse_eval(str(row['Evaluation']))
+            all_evals.append(eval_val)
+        print(f"Processed {total_rows} rows")
 
-    with h5py.File(output_file, "w") as f:
-        boards_dset = f.create_dataset("boards", shape=(total_rows, 12, 8, 8), dtype='float32')
-        extras_dset = f.create_dataset("extras", shape=(total_rows, 8), dtype='float32')
-        evals_dset = f.create_dataset("evals", shape=(total_rows, 1), dtype='float32')
+    # Concatenate lists into tensors.
+    boards = torch.cat(all_boards, dim=0)  # Shape: [N, 12, 8, 8]
+    extras = torch.cat(all_extras, dim=0)  # Shape: [N, 8]
+    evals = torch.tensor(all_evals, dtype=torch.float).unsqueeze(1)  # Shape: [N, 1]
 
-        row_idx = 0
-        for chunk in pd.read_csv(csv_file, chunksize=chunksize):
-            chunk_boards = []
-            chunk_extras = []
-            chunk_evals = []
+    # Compute weights using a histogram on the raw eval values.
+    evals_np = evals.squeeze(1).cpu().numpy()
+    hist, bin_edges = np.histogram(evals_np, bins=num_bins, density=True)
+    bin_indices = np.digitize(evals_np, bins=bin_edges, right=True)
+    # Avoid division by zero; use a default frequency of 1.0 if needed.
+    bin_freq = np.array([hist[i - 1] if i > 0 and (i - 1) < len(hist) else 1.0 for i in bin_indices])
+    weights = 1.0 / (bin_freq + 1e-6)
+    weights = weights / np.mean(weights)
+    weights = torch.tensor(weights, dtype=torch.float).unsqueeze(1)
 
-            for _, row in chunk.iterrows():
-                fen = row['FEN']
-                board, extra = process_fen(fen)
-                chunk_boards.append(board.unsqueeze(0))
-                chunk_extras.append(extra.unsqueeze(0))
-                eval_val = parse_eval(str(row['Evaluation']))
-                chunk_evals.append(eval_val)
+    # Create a dictionary with all the tensors.
+    data = {
+        'boards': boards,
+        'extras': extras,
+        'evals': evals,
+        'weights': weights,
+    }
 
-            # Concatenate chunk data
-            chunk_boards = torch.cat(chunk_boards, dim=0)
-            chunk_extras = torch.cat(chunk_extras, dim=0)
-            chunk_evals = torch.tensor(chunk_evals, dtype=torch.float).unsqueeze(1)
-
-            # Write this chunk's data into the HDF5 datasets
-            num_rows = chunk_boards.shape[0]
-            boards_dset[row_idx:row_idx + num_rows] = chunk_boards.numpy()
-            extras_dset[row_idx:row_idx + num_rows] = chunk_extras.numpy()
-            evals_dset[row_idx:row_idx + num_rows] = chunk_evals.numpy()
-
-            row_idx += num_rows
-            print(f"{100.0 * row_idx / total_rows:.2f}% done")
-
+    # Save the dictionary using torch.save.
+    torch.save(data, output_file)
     print(f"Precomputed tensors saved to {output_file}")
-
 
 class PrecomputedChessDataset(Dataset):
     def __init__(self, tensor_file, normalize=True, norm_params=None):
@@ -192,5 +195,5 @@ class PrecomputedChessDataset(Dataset):
 
 
 if __name__ == '__main__':
-    precompute_data('data/choppedTactics.csv', 'data/tactic_precomputedData.pt')
-    precompute_data('data/choppedData.csv', 'data/precomputedData.pt')
+    precompute_data('data/tactic_evals.csv', 'data/tactic_precomputedData.pt')
+    precompute_data('data/chessData.csv', 'data/precomputedData.pt')
