@@ -169,7 +169,7 @@ class ImprovedChessCNN(nn.Module):
             conv_layers.append(nn.LeakyReLU(0.1))
         self.conv = nn.Sequential(*conv_layers)
         conv_output_dim = conv_channels * 8 * 8
-        fc_input_dim = conv_output_dim + 6
+        fc_input_dim = conv_output_dim + 8
         fc_layers = []
         if num_fc_layers >= 2:
             fc_layers.append(nn.Linear(fc_input_dim, fc_hidden_dim))
