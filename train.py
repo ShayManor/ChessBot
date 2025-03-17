@@ -14,7 +14,49 @@ piece_to_idx = {
     'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
     'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11,
 }
+def compute_king_safety(board_str):
+    """
+    Computes a simple king safety score by counting the number of friendly pieces
+    in the 8 surrounding squares of each king.
+    """
+    board = []
+    for row in board_str.split('/'):
+        board_row = []
+        for ch in row:
+            if ch.isdigit():
+                board_row.extend(['.'] * int(ch))
+            else:
+                board_row.append(ch)
+        board.append(board_row)
+    # Find white king and black king positions.
+    white_king_pos = None
+    black_king_pos = None
+    for i in range(8):
+        for j in range(8):
+            if board[i][j] == 'K':
+                white_king_pos = (i, j)
+            elif board[i][j] == 'k':
+                black_king_pos = (i, j)
 
+    def count_adjacent(king_pos, friendly):
+        if king_pos is None:
+            return 0
+        count = 0
+        (i, j) = king_pos
+        for di in [-1, 0, 1]:
+            for dj in [-1, 0, 1]:
+                if di == 0 and dj == 0:
+                    continue
+                ni, nj = i + di, j + dj
+                if 0 <= ni < 8 and 0 <= nj < 8:
+                    if board[ni][nj] in friendly:
+                        count += 1
+        return count
+
+    # For white, consider all uppercase pieces; for black, all lowercase.
+    white_safety = count_adjacent(white_king_pos, 'PNBRQK')
+    black_safety = count_adjacent(black_king_pos, 'pnbrqk')
+    return white_safety, black_safety
 
 def get_advantage(fen):
     piece_values = {
@@ -33,7 +75,7 @@ def get_advantage(fen):
 
 def fen_to_tensor(fen):
     board, active, castling, en_passant, halfmove, fullmove = fen.split(" ")
-    tensor = torch.zeros(64 * 12 + 6)
+    tensor = torch.zeros(64 * 12 + 8)
     rows = board.split("/")
     for idx, row in enumerate(rows):
         file = 0
@@ -51,6 +93,7 @@ def fen_to_tensor(fen):
     for i in range(769, 773):
         tensor[i] = 1 if options[i - 769] in castling else -1
     tensor[773] = get_advantage(fen)
+    tensor[774], tensor[775] = compute_king_safety(fen)
     return tensor
 
 
