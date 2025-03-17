@@ -207,6 +207,8 @@ def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
 
         epoch_loss = running_loss / len(dataset)
         print(f"Epoch {epoch + 1}/{total_epochs} - Loss: {epoch_loss:.4f} - LR: {get_lr(optimizer):.6f}")
+    weights_file = f"improved_model_weights_{num_conv_layers}_{num_fc_layers}_{hidden_dim}.pth"
+    torch.save(model.state_dict(), weights_file)
     model.eval()
     # After training, test on a few FEN strings
     test_fens = [
