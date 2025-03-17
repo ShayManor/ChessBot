@@ -40,22 +40,33 @@ def create_new():
     for layers in fc_layers_options:
             for hidden_dims in hidden_dims_options:
                 for l in conv_layers_options:
-                    test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
-                    # Get the normalization parameters from the dataset.
-                    improved_train_model(num_conv_layers=l, num_fc_layers=layers, hidden_dim=hidden_dims)
                     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
+                    file = improved_train_model(training_data='data/precomputedData.pt',
+                                                initial_weights=None,
+                                                epocs=60,
+                                                batch_size=64,
+                                                num_conv_layers=l,
+                                                num_fc_layers=layers,
+                                                hidden_dim=hidden_dims,
+                                                )
                     model = ImprovedChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims).to(device)
+                    print("Fine tuning dataset")
+                    fine_tuned_weights = improved_train_model(training_data='data/tactic_precomputedData.pt',
+                                                              initial_weights=file,
+                                                              epocs=30,
+                                                              batch_size=64,
+                                                              num_conv_layers=l,
+                                                              num_fc_layers=layers,
+                                                              hidden_dim=hidden_dims
+                                                              )
+                    print(f"Model saved to {fine_tuned_weights}")
 
 
 def retest():
     total_data = []
     # Create the test dataset with normalization enabled.
     test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
-    # Get the normalization parameters from the dataset.
-    # mean_eval = test_dataset.mean_eval
-    # std_eval = test_dataset.std_eval
-
-    # For ground-truth, you can also load the DataFrame separately if needed.
     df_test = pd.read_csv('data/precomputedData.pt')
 
     with open('data.csv', 'r') as f:

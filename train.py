@@ -105,7 +105,7 @@ class ChessDataset(Dataset):
 
 
 class ImprovedChessCNN(nn.Module):
-    def __init__(self, conv_channels=64, dropout_rate=0.2, fc_hidden_dim=512,
+    def __init__(self, conv_channels=64, dropout_rate=0.1, fc_hidden_dim=512,
                  num_conv_layers=3, num_fc_layers=2):
         """
         Improved model adjustments:
@@ -119,7 +119,6 @@ class ImprovedChessCNN(nn.Module):
         conv_layers.append(nn.Conv2d(12, conv_channels, kernel_size=3, padding=1))
         conv_layers.append(nn.BatchNorm2d(conv_channels))
         conv_layers.append(nn.LeakyReLU(0.1))
-        # (Removed dropout in conv layers to improve gradient flow)
         # Additional convolutional layers:
         for _ in range(1, num_conv_layers):
             conv_layers.append(nn.Conv2d(conv_channels, conv_channels, kernel_size=3, padding=1))
@@ -164,21 +163,24 @@ def get_lr(optimizer):
         return param_group['lr']
 
 
-def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
+def improved_train_model(training_data, epocs=40, batch_size=64, hidden_dim=512, num_conv_layers=3, num_fc_layers=4, initial_weights=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    dataset = PrecomputedChessDataset('data/precomputedData.pt', normalize=True)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=8)
+    dataset = PrecomputedChessDataset(training_data, normalize=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
 
-    model = ImprovedChessCNN(conv_channels=64, dropout_rate=0.2, fc_hidden_dim=hidden_dim,
+    model = ImprovedChessCNN(conv_channels=64, dropout_rate=0.1, fc_hidden_dim=hidden_dim,
                              num_conv_layers=num_conv_layers, num_fc_layers=num_fc_layers)
     model.to(device)
+    if initial_weights:
+        model.load_state_dict(torch.load(initial_weights, map_location=device))
+        print(f"Loaded initial weights from {initial_weights}")
 
     # Lower weight decay helps improve gradient flow
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
     criterion = nn.MSELoss()
 
     warmup_epochs = 5
-    total_epochs = 40
+    total_epochs = epocs
 
     for epoch in range(total_epochs):
         model.train()
@@ -224,6 +226,7 @@ def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
         output = model(board, extra)
         prediction = output.item() * dataset.std_eval + dataset.mean_eval
         print(f"FEN: {fen}\n Prediction: {prediction:.4f}\n")
+    return weights_file
 
 
 if __name__ == '__main__':

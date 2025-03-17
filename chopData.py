@@ -16,7 +16,7 @@ def chop_csv(input_file, output_file, max_bytes):
 if __name__ == "__main__":
     input_file = "data/chessData.csv"
     output_file = "data/choppedData.csv"
-    max_bytes = int(10 * 1024 * 1024)
+    max_bytes = int(150 * 1024 * 1024)
     chop_csv(input_file, output_file, max_bytes)
     with open(output_file, 'r') as f:
         lines = f.readlines()
