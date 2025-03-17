@@ -9,11 +9,11 @@ import kagglehub
 # path = kagglehub.dataset_download("ronakbadhe/chess-evaluations")
 # print("Path to dataset files:", path)
 def test():
-    hidden_dims_options = [1024, 2048, 4096]
+    hidden_dims_options = [1024, 2048]
     epocs_options = [60]
-    conv_layers_options = [6, 8]
-    fc_layers_options = [6, 8, 10, 14]
-    idx = 1
+    conv_layers_options = [3, 5]
+    fc_layers_options = [4, 6]
+    idx = 0
     with open('data.csv', 'w') as file:
         writer = csv.writer(file)
         for layers in fc_layers_options:
