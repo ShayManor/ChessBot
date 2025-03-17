@@ -41,7 +41,7 @@ def create_new():
             for hidden_dims in hidden_dims_options:
                 for l in conv_layers_options:
                     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-                    test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
+                    # test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
                     file = improved_train_model(training_data='data/precomputedData.pt',
                                                 initial_weights=None,
                                                 epocs=60,
