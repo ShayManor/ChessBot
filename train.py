@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
+from preproces_data import PrecomputedChessDataset
 
 piece_to_idx = {
     'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
@@ -163,13 +164,13 @@ def get_lr(optimizer):
         return param_group['lr']
 
 
-def improved_train_model():
+def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    dataset = ChessDataset('data/choppedData.csv', normalize=True)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=4)
+    dataset = PrecomputedChessDataset('data/precomputedData.pt', normalize=True)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=8)
 
-    model = ImprovedChessCNN(conv_channels=64, dropout_rate=0.2, fc_hidden_dim=512,
-                             num_conv_layers=3, num_fc_layers=2)
+    model = ImprovedChessCNN(conv_channels=64, dropout_rate=0.2, fc_hidden_dim=hidden_dim,
+                             num_conv_layers=num_conv_layers, num_fc_layers=num_fc_layers)
     model.to(device)
 
     # Lower weight decay helps improve gradient flow

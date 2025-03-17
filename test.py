@@ -5,7 +5,8 @@ import time
 import pandas as pd
 import torch
 
-from train import fen_to_tensor, main, ChessDataset, ChessCNN, process_fen
+from preproces_data import PrecomputedChessDataset
+from train import fen_to_tensor, ChessDataset, ImprovedChessCNN, process_fen, improved_train_model
 
 
 def load_model_weights(model, weights_file, device):
@@ -34,22 +35,16 @@ def score_chess_state(fen, model, device, mean_eval, std_eval):
 
 def create_new():
     hidden_dims_options = [1024, 2048]
-    epocs_options = [60]
     conv_layers_options = [3, 5]
     fc_layers_options = [4, 6]
-    with open('data.csv', 'a') as file:
-        writer = csv.writer(file)
-        for layers in fc_layers_options:
-            for epocs in epocs_options:
-                for hidden_dims in hidden_dims_options:
-                    for l in conv_layers_options:
-                        test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
-                        # Get the normalization parameters from the dataset.
-                        mean_eval = test_dataset.mean_eval
-                        std_eval = test_dataset.std_eval
-                        main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
-                        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-                        model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims).to(device)
+    for layers in fc_layers_options:
+            for hidden_dims in hidden_dims_options:
+                for l in conv_layers_options:
+                    test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
+                    # Get the normalization parameters from the dataset.
+                    improved_train_model(num_conv_layers=l, num_fc_layers=layers, hidden_dim=hidden_dims)
+                    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    model = ImprovedChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims).to(device)
 
 
 def retest():
@@ -61,20 +56,20 @@ def retest():
     # std_eval = test_dataset.std_eval
 
     # For ground-truth, you can also load the DataFrame separately if needed.
-    df_test = pd.read_csv('data/choppedTest.csv')
+    df_test = pd.read_csv('data/precomputedData.pt')
 
     with open('data.csv', 'r') as f:
         next(f)
         reader = csv.reader(f)
         for line in reader:
-            test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
+            test_dataset = PrecomputedChessDataset('data/precomputedData.pt', normalize=True)
             print(line)
             layers, l, epocs, hidden_dims = int(line[5]), int(line[6]), int(line[7]), int(line[8])
             mean_eval = test_dataset.mean_eval
             std_eval = test_dataset.std_eval
             # main(num_conv_layers=l, num_fc_layers=layers, num_epochs=epocs, fc_hidden_dim=hidden_dims)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model = ChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
+            model = ImprovedChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
             weights_file = line[4]
             model = load_model_weights(model, weights_file, device)
             data = pd.read_csv('data/choppedTest.csv')
@@ -103,6 +98,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    # create_new()
+    create_new()
     # time.sleep(60*2)
-    retest()
+    # retest()
