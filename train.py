@@ -178,7 +178,7 @@ def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
     criterion = nn.MSELoss()
 
     warmup_epochs = 5
-    total_epochs = 60
+    total_epochs = 40
 
     for epoch in range(total_epochs):
         model.train()
@@ -194,7 +194,7 @@ def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
             loss.backward()
 
             grad_norm = model.fc[0].weight.grad.norm().item()
-            if i % 100 == 0:
+            if i % 1000 == 0:
                 print(f"Epoch {epoch + 1}, Batch {i + 1}, Grad Norm: {grad_norm:.4f}")
 
             optimizer.step()
@@ -207,7 +207,7 @@ def improved_train_model(hidden_dim, num_conv_layers, num_fc_layers):
 
         epoch_loss = running_loss / len(dataset)
         print(f"Epoch {epoch + 1}/{total_epochs} - Loss: {epoch_loss:.4f} - LR: {get_lr(optimizer):.6f}")
-
+    model.eval()
     # After training, test on a few FEN strings
     test_fens = [
         "4Rrk1/1p6/p2p2pp/P1pq2Nr/3b3P/6P1/1P2QP2/3R2K1 w - - 4 32",
