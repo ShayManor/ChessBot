@@ -171,7 +171,7 @@ class PrecomputedChessDataset(Dataset):
         self.boards = data['boards']  # Tensor of shape [N, 12, 8, 8]
         self.extras = data['extras']  # Tensor of shape [N, 6]
         self.evals = data['evals']  # Tensor of shape [N, 1]
-        # self.weights = data['weights']
+        self.weights = data['weights']
         self.normalize = normalize
         if self.normalize:
             if norm_params is None:
@@ -188,7 +188,7 @@ class PrecomputedChessDataset(Dataset):
         return self.evals.size(0)
 
     def __getitem__(self, idx):
-        return (self.boards[idx], self.extras[idx]), self.evals[idx]
+        return (self.boards[idx], self.extras[idx]), self.evals[idx], self.weights[idx]
 
 
 if __name__ == '__main__':
