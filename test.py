@@ -75,6 +75,7 @@ def retest():
         for line in reader:
             test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
             print(line)
+            cd = pd.read_csv('choppedData.csv')
             layers, l, epocs, hidden_dims = int(line[5]), int(line[6]), int(line[7]), int(line[8])
             mean_eval = test_dataset.mean_eval
             std_eval = test_dataset.std_eval
@@ -92,9 +93,9 @@ def retest():
             for index, row in data.iterrows():
                 counter += 1
                 fen = row['FEN']
-                exp_eval = parse_eval(row['Evaluation'].replace('#', ''))
+                exp_eval = parse_eval(str(row['Evaluation']))
                 evaluation = float(score_chess_state(fen, model, device, mean_eval, std_eval))
-                print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
+                # print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
                 tot += abs(evaluation - exp_eval)
                 total_vals += abs(evaluation)
             print(f"Error rate: {tot / counter}. Average evals = {total_vals / counter}")
@@ -110,6 +111,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    create_new()
+    # create_new()
     # time.sleep(60*2)
-    # retest()
+    retest()
