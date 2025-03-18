@@ -136,7 +136,7 @@ def precompute_data(csv_file, output_file, num_bins=100, chunksize=10000):
             fen = row['FEN']
             board, extra = process_fen(fen)
             eval_val = parse_eval(str(row['Evaluation']))
-            if abs(eval_val) >= 200:
+            if abs(eval_val) < 200:
                 all_evals.append(eval_val)
                 all_boards.append(board.unsqueeze(0))
                 all_extras.append(extra.unsqueeze(0))
