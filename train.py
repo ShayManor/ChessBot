@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Dataset, DataLoader
 
 from preproces_data import PrecomputedChessDataset
@@ -220,6 +221,7 @@ def improved_train_model(training_data, epocs=40, batch_size=64, hidden_dim=512,
 
     # Lower weight decay helps improve gradient flow
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
+    scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
     criterion = nn.MSELoss()
 
     warmup_epochs = 5
@@ -237,6 +239,7 @@ def improved_train_model(training_data, epocs=40, batch_size=64, hidden_dim=512,
             output = model(board, extra)
             loss = criterion(output, target)
             loss.backward()
+            optimizer.step()
 
             grad_norm = model.fc[0].weight.grad.norm().item()
             if i % 1000 == 0:
@@ -249,6 +252,8 @@ def improved_train_model(training_data, epocs=40, batch_size=64, hidden_dim=512,
             warmup_lr = 1e-3 * float(epoch + 1) / warmup_epochs
             for param_group in optimizer.param_groups:
                 param_group['lr'] = warmup_lr
+        else:
+            scheduler.step()
 
         epoch_loss = running_loss / len(dataset)
         print(f"Epoch {epoch + 1}/{total_epochs} - Loss: {epoch_loss:.4f} - LR: {get_lr(optimizer):.6f}")

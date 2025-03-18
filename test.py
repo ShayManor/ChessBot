@@ -34,9 +34,9 @@ def score_chess_state(fen, model, device, mean_eval, std_eval):
 
 
 def create_new():
-    hidden_dims_options = [1024, 2048]
-    conv_layers_options = [3, 5]
-    fc_layers_options = [4, 6]
+    hidden_dims_options = [2048]
+    conv_layers_options = [5, 7]
+    fc_layers_options = [6, 8]
     for layers in fc_layers_options:
             for hidden_dims in hidden_dims_options:
                 for l in conv_layers_options:
@@ -44,7 +44,7 @@ def create_new():
                     # test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
                     file = improved_train_model(training_data='data/precomputedData.pt',
                                                 initial_weights=None,
-                                                epocs=60,
+                                                epocs=100,
                                                 batch_size=64,
                                                 num_conv_layers=l,
                                                 num_fc_layers=layers,
@@ -54,7 +54,7 @@ def create_new():
                     print("Fine tuning dataset")
                     fine_tuned_weights = improved_train_model(training_data='data/tactic_precomputedData.pt',
                                                               initial_weights=file,
-                                                              epocs=30,
+                                                              epocs=100,
                                                               batch_size=64,
                                                               num_conv_layers=l,
                                                               num_fc_layers=layers,
