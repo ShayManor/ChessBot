@@ -1,3 +1,8 @@
+import pandas as pd
+
+from preproces_data import parse_eval
+
+
 def chop_csv(input_file, output_file, max_bytes):
     with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
         bytes_written = 0
@@ -10,16 +15,16 @@ def chop_csv(input_file, output_file, max_bytes):
                 break
             f_out.write(chunk)
             bytes_written += len(chunk)
-    print(f"Chopped file written to {output_file}, total bytes: {bytes_written}")
 
 
 if __name__ == "__main__":
-    input_file = "data/chessData.csv"
-    output_file = "data/choppedData.csv"
-    max_bytes = int(150 * 1024 * 1024)
-    chop_csv(input_file, output_file, max_bytes)
+    input_file = "data/tactic_evals.csv"
+    output_file = "data/choppedTactics.csv"
     with open(output_file, 'r') as f:
         lines = f.readlines()
+    df = pd.read_csv(input_file, nrows=1*10**6)
+    df['Eval'] = abs(df['Evaluation'].apply(parse_eval))
+    df_filt = df[df['Eval'] <= 200.0]
     with open(output_file, 'w') as f:
-        # f.writelines(lines[98 * len(lines) // 100:-1])
-        f.writelines(lines[:-1])
+        df_filt.to_csv(f)
+        print(f"Chopped file written to {output_file}, total lines: {len(df_filt)}")

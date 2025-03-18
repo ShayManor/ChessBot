@@ -5,7 +5,7 @@ import time
 import pandas as pd
 import torch
 
-from preproces_data import PrecomputedChessDataset
+from preproces_data import PrecomputedChessDataset, parse_eval
 from train import fen_to_tensor, ChessDataset, ImprovedChessCNN, process_fen, improved_train_model
 
 
@@ -67,13 +67,13 @@ def retest():
     total_data = []
     # Create the test dataset with normalization enabled.
     test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
-    df_test = pd.read_csv('data/precomputedData.pt')
+    # df_test = pd.read_csv('data/precomputedData.pt')
 
     with open('data.csv', 'r') as f:
         next(f)
         reader = csv.reader(f)
         for line in reader:
-            test_dataset = PrecomputedChessDataset('data/precomputedData.pt', normalize=True)
+            test_dataset = ChessDataset('data/choppedTest.csv', normalize=True)
             print(line)
             layers, l, epocs, hidden_dims = int(line[5]), int(line[6]), int(line[7]), int(line[8])
             mean_eval = test_dataset.mean_eval
@@ -82,6 +82,7 @@ def retest():
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             model = ImprovedChessCNN(num_fc_layers=layers, num_conv_layers=l, fc_hidden_dim=hidden_dims)
             weights_file = line[4]
+            print(weights_file)
             model = load_model_weights(model, weights_file, device)
             data = pd.read_csv('data/choppedTest.csv')
             start_time = time.time()
@@ -91,7 +92,7 @@ def retest():
             for index, row in data.iterrows():
                 counter += 1
                 fen = row['FEN']
-                exp_eval = float(row['Evaluation'].replace('#', ''))
+                exp_eval = parse_eval(row['Evaluation'].replace('#', ''))
                 evaluation = float(score_chess_state(fen, model, device, mean_eval, std_eval))
                 print(f"Eval for {fen} expected: {exp_eval}, result: {evaluation}")
                 tot += abs(evaluation - exp_eval)
@@ -109,6 +110,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    create_new()
+    # create_new()
     # time.sleep(60*2)
-    # retest()
+    retest()

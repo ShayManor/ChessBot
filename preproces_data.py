@@ -135,10 +135,11 @@ def precompute_data(csv_file, output_file, num_bins=100, chunksize=10000):
             total_rows += 1
             fen = row['FEN']
             board, extra = process_fen(fen)
-            all_boards.append(board.unsqueeze(0))
-            all_extras.append(extra.unsqueeze(0))
             eval_val = parse_eval(str(row['Evaluation']))
-            all_evals.append(eval_val)
+            if abs(eval_val) >= 200:
+                all_evals.append(eval_val)
+                all_boards.append(board.unsqueeze(0))
+                all_extras.append(extra.unsqueeze(0))
         print(f"Processed {total_rows} rows")
 
     # Concatenate lists into tensors.
@@ -168,6 +169,7 @@ def precompute_data(csv_file, output_file, num_bins=100, chunksize=10000):
     torch.save(data, output_file)
     print(f"Precomputed tensors saved to {output_file}")
 
+
 class PrecomputedChessDataset(Dataset):
     def __init__(self, tensor_file, normalize=True, norm_params=None):
         data = torch.load(tensor_file)
@@ -195,5 +197,5 @@ class PrecomputedChessDataset(Dataset):
 
 
 if __name__ == '__main__':
-    precompute_data('data/choppedTactics.csv', 'data/tactic_precomputedData.pt')
-    precompute_data('data/choppedData.csv', 'data/precomputedData.pt')
+    precompute_data('data/choppedTactics.csv', 'data/tactic_precomputedData0200.pt')
+    precompute_data('data/choppedData.csv', 'data/precomputedData0200.pt')
