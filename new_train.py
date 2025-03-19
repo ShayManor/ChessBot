@@ -195,7 +195,7 @@ class EnhancedChessEvaluationModel(nn.Module):
 
         # Fully connected layers for evaluation
         self.fc_block = nn.Sequential(
-            nn.Linear(conv_output_size + 7, fc_hidden_dim),  # +7 for the chess-specific features
+            nn.Linear(conv_output_size + 8, fc_hidden_dim),  # +7 for the chess-specific features
             nn.BatchNorm1d(fc_hidden_dim),
             nn.LeakyReLU(0.1),
             nn.Dropout(0.2),
