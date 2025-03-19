@@ -372,7 +372,8 @@ class ChessEvaluationTrainer:
 
                 outputs = self.model(board_tensors, extras_tensors)
                 # For validation we can skip custom weighting. Just do MSE on the transformed scale:
-                loss = F.mse_loss(outputs, transformed_evals)
+                outputs_squeezed = outputs.squeeze(-1)
+                loss = F.mse_loss(outputs_squeezed, transformed_evals)
                 val_loss += loss.item()
 
         return val_loss / len(val_dataloader)
