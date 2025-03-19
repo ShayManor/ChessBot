@@ -359,7 +359,7 @@ class ChessEvaluationTrainer:
         val_loss = 0.0
 
         with torch.no_grad():
-            for board_tensors, extras_tensors, eval_values, weights in val_dataloader:
+            for board_tensors, extras_tensors, eval_values in val_dataloader:
                 board_tensors = board_tensors.to(self.device)
                 extras_tensors = extras_tensors.to(self.device)
                 eval_values = eval_values.to(self.device)
