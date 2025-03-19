@@ -18,13 +18,13 @@ def chop_csv(input_file, output_file, max_bytes):
 
 
 if __name__ == "__main__":
-    input_file = "data/random_evals.csv"
-    output_file = "data/choppedTest.csv"
+    input_file = "data/chessData.csv"
+    output_file = "data/choppedData.csv"
     with open(output_file, 'r') as f:
         lines = f.readlines()
-    df = pd.read_csv(input_file, nrows=1*10**5)
+    df = pd.read_csv(input_file, nrows=5*10**6)
     df['Eval'] = abs(df['Evaluation'].apply(parse_eval))
-    df_filt = df[df['Eval'] <= 200.0]
+    # df_filt = df[df['Eval'] <= 200.0]
     with open(output_file, 'w') as f:
-        df_filt.to_csv(f)
-        print(f"Chopped file written to {output_file}, total lines: {len(df_filt)}")
+        df.to_csv(f)
+        print(f"Chopped file written to {output_file}, total lines: {len(df)}")
