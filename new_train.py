@@ -252,14 +252,12 @@ class NonLinearEvalTransform:
         self.clip_value = clip_value
 
     def transform(self, eval_value):
-        # Clip extreme values
         eval_value = max(min(eval_value, self.clip_value), -self.clip_value)
-
-        # Apply sigmoid-like transformation that preserves zero
+        eval_tensor = torch.tensor(eval_value, dtype=torch.float)
         if eval_value >= 0:
-            return 2.0 / (1.0 + torch.exp(-eval_value / 300)) - 1.0
+            return 2.0 / (1.0 + torch.exp(-eval_tensor / 300)) - 1.0
         else:
-            return -2.0 / (1.0 + torch.exp(eval_value / 300)) + 1.0
+            return -2.0 / (1.0 + torch.exp(eval_tensor / 300)) + 1.0
 
     def inverse_transform(self, transformed_value):
         # Inverse transformation to get back the original scale
