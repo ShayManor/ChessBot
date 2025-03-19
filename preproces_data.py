@@ -197,5 +197,5 @@ class PrecomputedChessDataset(Dataset):
 
 
 if __name__ == '__main__':
-    precompute_data('data/choppedTactics.csv', 'data/tactic_precomputedData.pt')
+    # precompute_data('data/choppedTactics.csv', 'data/tactic_precomputedData.pt')
     precompute_data('data/choppedData.csv', 'data/precomputedData.pt')

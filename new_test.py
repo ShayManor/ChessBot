@@ -111,8 +111,8 @@ def load_chess_data(data_path, batch_size=64, is_validation=False):
     if data_path.endswith('.pt'):
         # Load preprocessed tensor data
         data = torch.load(data_path)
-        dataset = TensorDataset(data['board_tensors'], data['fen_strings'],
-                                data['eval_values'], data['weights'])
+        dataset = TensorDataset(data['boards'], data['extras'],
+                                data['evals'], data['weights'])
     else:
         # Load from CSV and process
         dataset = ChessDataset(data_path, normalize=True)

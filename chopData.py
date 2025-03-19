@@ -22,7 +22,7 @@ if __name__ == "__main__":
     output_file = "data/choppedData.csv"
     with open(output_file, 'r') as f:
         lines = f.readlines()
-    df = pd.read_csv(input_file, nrows=5*10**6)
+    df = pd.read_csv(input_file, nrows=1*10**6)
     df['Eval'] = abs(df['Evaluation'].apply(parse_eval))
     # df_filt = df[df['Eval'] <= 200.0]
     with open(output_file, 'w') as f:
