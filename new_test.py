@@ -49,8 +49,8 @@ def main():
 
             # Load data
             print("Loading training data...")
-            train_dataloader = load_chess_data('data/precomputedData.pt', batch_size=64)
-            val_dataloader = load_chess_data('data/choppedTest.csv', batch_size=64, is_validation=True)
+            train_dataloader = load_chess_data('data/precomputedData.pt', batch_size=128)
+            val_dataloader = load_chess_data('data/choppedTest.csv', batch_size=128, is_validation=True)
 
             # Train model
             print("Starting model training...")
@@ -65,7 +65,7 @@ def main():
 
             # Fine-tune on tactical positions
             print("Fine-tuning on tactical positions...")
-            fine_tune_dataloader = load_chess_data('data/tactic_precomputedData.pt', batch_size=64)
+            fine_tune_dataloader = load_chess_data('data/tactic_precomputedData.pt', batch_size=128)
 
             # Reload model with best weights
             model.load_state_dict(torch.load("best_chess_eval_model.pth", map_location=device))
