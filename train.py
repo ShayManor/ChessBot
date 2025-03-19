@@ -145,7 +145,7 @@ class ChessDataset(Dataset):
         else:
             target = torch.tensor([eval_value], dtype=torch.float)
         weight = torch.tensor([row['weight']], dtype=torch.float)
-        return (board, extra), target, weight
+        return board, extra, target, weight
 
 
 class ImprovedChessCNN(nn.Module):
