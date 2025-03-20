@@ -86,8 +86,8 @@ def test_on_choppedTest2():
                     # You said your 'ChessDataset' might also do normalization,
                     # so we unnormalize with (outputs * std_eval + mean_eval) if that is the correct approach.
                     # Double-check if you are using the same normalization logic.
-                    real_preds = outputs * std_eval + mean_eval
-
+                    # real_preds = outputs * std_eval + mean_eval
+                    real_preds = outputs
                     # Now compare to actual eval_values (these are presumably also in real scale).
                     # Possibly you have to parse the '#' if your dataset does that automatically.
                     train_ds = pd.read_csv('data/choppedData.csv')
