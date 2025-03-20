@@ -204,8 +204,8 @@ def train(model, dataloader, optimizer, criterion, device, scaler, epoch, writer
         scaler.update()
 
         running_loss += loss.item() * features.size(0)
-        if batch_idx % 100 == 0:
-            print(f"Epoch {epoch} Batch {batch_idx}: Loss {loss.item():.4f}")
+        # if batch_idx % 100 == 0:
+        #     print(f"Epoch {epoch} Batch {batch_idx}: Loss {loss.item():.4f}")
 
     avg_loss = running_loss / len(dataloader.dataset)
     writer.add_scalar("Loss/train", avg_loss, epoch)
