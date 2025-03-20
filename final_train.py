@@ -33,11 +33,15 @@ class ChessEvalDataset(Dataset):
         with open(data_file, 'r') as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line:
+                    continue
+                # Split the line into FEN and evaluation
                 try:
                     fen, eval_str = line.split(',')
                 except Exception as e:
                     print("Error parsing line:", line)
+                    continue
+                if fen.lower() == "fen" or eval_str.lower() == "evaluation":
                     continue
                 target = self.parse_eval(eval_str)
                 self.samples.append((fen, target))
