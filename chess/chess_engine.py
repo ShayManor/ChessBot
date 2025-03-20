@@ -110,7 +110,7 @@ class ChessEngine:
             valid_moves = [move for move in book_moves if move in board.legal_moves]
             if valid_moves:
                 return random.choice(valid_moves)
-
+        self.current_depth = 0
         # Check if we already calculated this position in the background
         if self.background_best_move and self.background_board_fen == board_fen:
             return self.background_best_move
@@ -143,7 +143,6 @@ class ChessEngine:
             # If we found a winning move, no need to search deeper
             if value > 9000:
                 break
-
         return best_move if best_move else self._get_random_move(board)
 
     def start_background_thinking(self, board: chess.Board):

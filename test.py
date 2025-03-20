@@ -110,6 +110,6 @@ def retest():
 
 
 if __name__ == '__main__':
-    create_new()
+    # create_new()
     # time.sleep(60*2)
-    # retest()
+    retest()

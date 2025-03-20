@@ -1,2 +1,11 @@
 pandas==2.2.3
 torch==2.6.0
+pygame~=2.6.1
+chess~=1.11.2
+kagglehub~=0.3.10
+pip~=23.2.1
+pillow~=11.1.0
+filelock~=3.17.0
+numpy~=2.2.3
+matplotlib~=3.10.1
+h5py~=3.13.0

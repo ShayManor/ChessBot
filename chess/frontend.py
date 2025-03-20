@@ -16,7 +16,7 @@ pygame.init()
 # Constants
 BOARD_SIZE = 480
 SQUARE_SIZE = BOARD_SIZE // 8
-INFO_PANEL_WIDTH = 250
+INFO_PANEL_WIDTH = 300
 WINDOW_WIDTH = BOARD_SIZE + INFO_PANEL_WIDTH
 WINDOW_HEIGHT = BOARD_SIZE
 FPS = 60
@@ -146,13 +146,15 @@ class ChessGame:
         font = pygame.font.Font(None, 36)
 
         # White timer
-        white_timer_text = font.render(f"White: {int(self.white_time // 60)}:{int(self.white_time % 60):02d}",
-                                       True, BLACK)
+        white_timer_text = font.render(
+            f"White: {int(self.white_time // 60)}:{int(self.white_time % 60):02d}",
+            True, BLACK)
         self.screen.blit(white_timer_text, (BOARD_SIZE + 20, 20))
 
         # Black timer
-        black_timer_text = font.render(f"Black: {int(self.black_time // 60)}:{int(self.black_time % 60):02d}",
-                                       True, BLACK)
+        black_timer_text = font.render(
+            f"Black: {int(self.black_time // 60)}:{int(self.black_time % 60):02d}",
+            True, BLACK)
         self.screen.blit(black_timer_text, (BOARD_SIZE + 20, 60))
 
         # Current player
@@ -168,17 +170,20 @@ class ChessGame:
             mode_text = "AI vs Player"
         else:
             mode_text = "AI vs AI"
-
         mode_label = font.render(f"Mode: {mode_text}", True, BLACK)
         self.screen.blit(mode_label, (BOARD_SIZE + 20, 140))
 
         # Engine information
         small_font = pygame.font.Font(None, 24)
-        white_engine = small_font.render("White: Positional AI", True, BLACK)
+        # --- CHANGED HERE: show each engine's current depth ---
+        white_depth_text = f"White: Positional AI (Depth: {self.white_engine.current_depth})"
+        white_engine = small_font.render(white_depth_text, True, BLACK)
         self.screen.blit(white_engine, (BOARD_SIZE + 20, 180))
 
-        black_engine = small_font.render("Black: Aggressive AI", True, BLACK)
+        black_depth_text = f"Black: Aggressive AI (Depth: {self.black_engine.current_depth})"
+        black_engine = small_font.render(black_depth_text, True, BLACK)
         self.screen.blit(black_engine, (BOARD_SIZE + 20, 210))
+        # ------------------------------------------------------
 
         # Status message
         status_font = pygame.font.Font(None, 24)

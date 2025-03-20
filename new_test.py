@@ -1,131 +1,149 @@
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+import csv
 import time
-import os
 
-from new_train import ChessFeatureExtractor, NonLinearEvalTransform, EnhancedChessEvaluationModel, \
-    ChessEvaluationTrainer
-# Import necessary classes from your first file
+import pandas as pd
+import torch
+
+from new_train import EnhancedChessEvaluationModel
+from preproces_data import parse_eval
 from train import ChessDataset
 
 
-def main():
-    # Configuration options similar to create_new()
-    hidden_dims_options = [1024, 2048]  # Using the fc_hidden_dim from EnhancedChessEvaluationModel
-    conv_channels_options = [128, 256]  # Using the conv_channels from EnhancedChessEvaluationModel
-
-    # Set up device
+def test_on_choppedTest2():
+    """
+    Reads the existing rows from data.csv (skips header),
+    loads each specified model, then tests on 'choppedTest2.csv'.
+    Appends new results to data.csv with the new test stats
+    (Error rate, average eval, total test time, average test time, etc.).
+    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    print("Testing on device:", device)
 
-    # Initialize feature extractor
-    feature_extractor = ChessFeatureExtractor()
+    # We'll create a dataset from choppedTest2.csv.
+    # Make sure your ChessDataset supports the 'normalize=True' if needed.
+    test_dataset = ChessDataset('data/choppedTest2.csv', normalize=True)
+    mean_eval = test_dataset.mean_eval
+    std_eval = test_dataset.std_eval
 
-    # Initialize evaluation transformer
-    eval_transformer = NonLinearEvalTransform(clip_value=2000)
+    # Read existing data from data.csv (skipping the header).
+    rows_for_append = []
+    with open('data.csv', 'r', newline='') as f:
+        reader = csv.reader(f)
+        header = next(reader)  # skip header line
+        for line in reader:
+            # Expect columns like:
+            # 0: Error Rate
+            # 1: Average Evals
+            # 2: Time to test
+            # 3: Average Time
+            # 4: Model Weights
+            # 5: Layers
+            # 6: conv_layers
+            # 7: Epocs
+            # 8: Hidden Dimensions
+            # We mostly only need columns [4..8] to reconstruct the model.
 
-    # Create results tracking
-    results = []
+            model_weights = line[4]
+            layers = int(line[5])
+            conv_layers = 128
+            epocs = int(line[7])
+            hidden_dims = int(line[8])
 
-    for hidden_dims in hidden_dims_options:
-        for conv_channels in conv_channels_options:
-            print(f"\nTraining model with hidden_dims={hidden_dims}, conv_channels={conv_channels}")
-
-            # Initialize model
+            # Now we test on choppedTest2.csv using these weights.
+            # 1) Create the model
             model = EnhancedChessEvaluationModel(
-                input_channels=12,  # Standard chess input (6 pieces x 2 colors)
-                conv_channels=conv_channels,
-                fc_hidden_dim=hidden_dims
+                input_channels=12,
+                conv_channels=conv_layers,  # e.g. 128 or 256
+                fc_hidden_dim=hidden_dims  # e.g. 1024 or 2048
             ).to(device)
 
-            # Set up trainer
-            trainer = ChessEvaluationTrainer(
-                model=model,
-                feature_extractor=feature_extractor,
-                eval_transformer=eval_transformer,
-                device=device
-            )
+            # 2) Load the weights
+            print(f"\nLoading model weights from {model_weights}")
+            model.load_state_dict(torch.load(model_weights, map_location=device))
+            model.eval()
 
-            # Load data
-            print("Loading training data...")
-            train_dataloader = load_chess_data('data/precomputedData.pt', batch_size=128)
-            val_dataloader = load_chess_data('data/choppedTest.csv', batch_size=128, is_validation=True)
-
-            # Train model
-            print("Starting model training...")
+            # 3) Do a pass over choppedTest2.csv
+            data_loader = torch.utils.data.DataLoader(test_dataset,
+                                                      batch_size=64,
+                                                      shuffle=False,
+                                                      num_workers=2)
             start_time = time.time()
-            trainer.train(train_dataloader, val_dataloader, num_epochs=100)
-            training_time = time.time() - start_time
+            total_abs_error = 0.0
+            total_abs_eval = 0.0
+            count = 0
 
-            # Save model weights
-            model_filename = f"chess_eval_model_h{hidden_dims}_c{conv_channels}.pth"
-            torch.save(model.state_dict(), model_filename)
-            print(f"Model saved to {model_filename}")
+            with torch.no_grad():
+                for batch in data_loader:
+                    board_tensors, extras_tensors, eval_values, _ = batch
+                    board_tensors = board_tensors.to(device)
+                    extras_tensors = extras_tensors.to(device)
 
-            # Fine-tune on tactical positions
-            print("Fine-tuning on tactical positions...")
-            fine_tune_dataloader = load_chess_data('data/tactic_precomputedData.pt', batch_size=128)
+                    # Evaluate (predictions)
+                    outputs = model(board_tensors, extras_tensors)  # shape [batch_size, 1]
+                    outputs = outputs.squeeze(-1)  # shape [batch_size]
 
-            # Reload model with best weights
-            model.load_state_dict(torch.load("best_chess_eval_model.pth", map_location=device))
+                    # Convert back to real scale, because we stored eval in real scale
+                    # You said your 'ChessDataset' might also do normalization,
+                    # so we unnormalize with (outputs * std_eval + mean_eval) if that is the correct approach.
+                    # Double-check if you are using the same normalization logic.
+                    real_preds = outputs * std_eval + mean_eval
 
-            # Fine-tune
-            start_time = time.time()
-            trainer.train(fine_tune_dataloader, val_dataloader, num_epochs=50)
-            fine_tuning_time = time.time() - start_time
+                    # Now compare to actual eval_values (these are presumably also in real scale).
+                    # Possibly you have to parse the '#' if your dataset does that automatically.
+                    train_ds = pd.read_csv('data/choppedData.csv')
+                    train_ds = train_ds['Evaluation'].apply(parse_eval)
+                    train_std = train_ds.std()
+                    train_mean = train_ds.mean()
+                    print(f"Training mean: {train_mean}, Training std: {train_std}")
+                    # Accumulate absolute differences
+                    for i in range(len(eval_values)):
+                        true_eval = eval_values[i].item()  # real scale
+                        pred_eval = real_preds[i].item()
+                        total_abs_error += abs(pred_eval - true_eval)
+                        total_abs_eval += abs(pred_eval)
+                        print(f"Expected Eval: {true_eval} Returned Eval: {pred_eval}")
+                        count += 1
 
-            # Save fine-tuned model
-            fine_tuned_filename = f"chess_eval_model_finetuned_h{hidden_dims}_c{conv_channels}.pth"
-            torch.save(model.state_dict(), fine_tuned_filename)
-            print(f"Fine-tuned model saved to {fine_tuned_filename}")
+            end_time = time.time()
+            total_time = end_time - start_time
+            if count == 0:
+                # Avoid dividing by zero; means no data in choppedTest2.csv
+                error_rate = 0
+                avg_eval = 0
+                avg_time = 0
+            else:
+                error_rate = total_abs_error / count
+                avg_eval = total_abs_eval / count
+                avg_time = total_time / count
 
-            # Record results
-            results.append({
-                'hidden_dims': hidden_dims,
-                'conv_channels': conv_channels,
-                'training_time': training_time,
-                'fine_tuning_time': fine_tuning_time,
-                'model_file': model_filename,
-                'fine_tuned_file': fine_tuned_filename
-            })
+            print(f"Testing complete for {model_weights}:")
+            print(f"  Error rate: {error_rate:.4f}")
+            print(f"  Average eval: {avg_eval:.4f}")
+            print(f"  Total time: {total_time:.4f}")
+            print(f"  Avg time: {avg_time:.6f}")
 
-    # Print results summary
-    print("\n===== Training Results Summary =====")
-    for result in results:
-        print(f"Model with hidden_dims={result['hidden_dims']}, conv_channels={result['conv_channels']}:")
-        print(f"  Training time: {result['training_time']:.2f} seconds")
-        print(f"  Fine-tuning time: {result['fine_tuning_time']:.2f} seconds")
-        print(f"  Model file: {result['model_file']}")
-        print(f"  Fine-tuned file: {result['fine_tuned_file']}")
-        print()
+            # Prepare a new row to append to data.csv
+            new_row = [
+                error_rate,  # error rate
+                avg_eval,  # average eval
+                total_time,  # total time
+                avg_time,  # average time
+                model_weights,  # same model weights
+                layers,  # layers
+                conv_layers,  # conv_layers
+                epocs,  # epocs
+                hidden_dims  # hidden dims
+            ]
+            rows_for_append.append(new_row)
 
+    # Finally, append these new rows to data.csv
+    with open('data.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        for row in rows_for_append:
+            writer.writerow(row)
 
-def load_chess_data(data_path, batch_size=64, is_validation=False):
-    """
-    Load chess data from file and prepare DataLoader
-    This function needs to be adapted to your specific data format
-    """
-    # This is a placeholder - you'll need to implement this based on your data format
-    # If data_path ends with .pt, load preprocessed data
-    if data_path.endswith('.pt'):
-        # Load preprocessed tensor data
-        data = torch.load(data_path)
-        dataset = TensorDataset(data['boards'], data['extras'],
-                                data['evals'], data['weights'])
-    else:
-        # Load from CSV and process
-        dataset = ChessDataset(data_path, normalize=True)
-
-    # Create dataloader
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=not is_validation,
-        num_workers=4 if not is_validation else 2,
-        pin_memory=True
-    )
+    print("\nFinished testing on choppedTest2.csv. New rows appended to data.csv.")
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    test_on_choppedTest2()
