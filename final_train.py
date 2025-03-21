@@ -237,10 +237,10 @@ def main():
     # Settings
     data_file_train = "data/chessData.csv"  # Path to your Kaggle CSV file
     data_file_val = "data/choppedTest.csv"  # Optionally, a separate validation set
-    num_epochs = 10
-    batch_size = 512
+    num_epochs = 80
+    batch_size = 128
     lr = 1e-3
-    hidden_dim = 32
+    hidden_dim = 1024
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
